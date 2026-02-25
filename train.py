@@ -42,7 +42,7 @@ def train_epoch(model, dataloader, optimizer, lh_loss_fn , device, config, logge
         positive_seq = batch['positive_seq'].to(device)
         positive_mask = batch['positive_mask'].to(device)
 
-        loss_cl = torch.tensor(0.0, device=device) # 初始化为0，防止报错
+        loss_cl = torch.tensor(0.0, device=device)
         if current_lambda_cl > 0:
             combined_seq = torch.cat([anchor_seq, positive_seq], dim=0)
             combined_mask_val = torch.cat([anchor_mask, positive_mask], dim=0)
