@@ -13,17 +13,6 @@ from src.loss.cl_loss import LHInfoNCELoss
 from src.dataprocess.TrajectoryContrastiveDataset import TrajectoryContrastiveDataset
 from src.utils.experiment_manager import ExperimentManager
 
-def info_nce_loss(features, temperature=0.1):
-    features = F.normalize(features, dim=1)
-    sim = torch.matmul(features, features.T)
-
-    B = features.shape[0] // 2
-    labels = torch.arange(B, device=features.device)
-    loss1 = F.cross_entropy(sim[:B] / temperature, labels + B)
-    loss2 = F.cross_entropy(sim[B:] / temperature, labels)
-
-    return (loss1 + loss2) / 2
-
 def get_dynamic_cl_weight(current_epoch, total_warmup_epochs, target_lambda):
     if current_epoch >= total_warmup_epochs:
         return target_lambda
