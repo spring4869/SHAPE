@@ -71,8 +71,6 @@ def train_epoch(model, dataloader, optimizer, lh_loss_fn , device, config, logge
         anchor_mask = batch['anchor_mask'].to(device)
         positive_seq = batch['positive_seq'].to(device)
         positive_mask = batch['positive_mask'].to(device)
-        # anchor_mask: 1 = 有效, 0 = Padding
-        # positive_mask: 1 = 有效, 0 = Padding
 
         # ===== CL =====
         loss_cl = torch.tensor(0.0, device=device) 
