@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+
+data/
+outputs/
+seed_search/
+
+configs/*.yaml
+!configs/*.example.yaml
