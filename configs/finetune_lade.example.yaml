@@ -1,0 +1,31 @@
+# Example fine-tuning config (LaDe ETA).
+# Copy this file and edit paths for your environment.
+
+experiment_name: "finetune"
+output_dir: "outputs"
+
+data:
+  npz_path: "data/processed/lade/processed_data.npz"
+  postman_map_path: "data/processed/lade/postman_id_map.pkl"
+
+model:
+  pretrained_path: "checkpoints/pretrain/best.pt"
+  freeze_encoder: true
+  use_driver_emb: true
+  input_dim: 7
+  model_dim: 256
+  time_input_dim: 10
+  driver_emb_dim: 16
+  hidden_dim: 128
+  num_attn_heads: 4
+
+train:
+  device: "cuda:0"
+  batch_size: 64
+  lr: 0.001
+  epochs: 100
+  patience: 10
+
+log:
+  file: "logs/finetune.log"
+  interval: 50

@@ -1,0 +1,31 @@
+# Example pre-training config (LaDe).
+# Copy this file and edit paths for your environment.
+
+data:
+  npz_path: "data/processed/lade/processed_data.npz"
+  scalers:
+    ri: "data/processed/lade/scaler_ri.pkl"
+    latlng: "data/processed/lade/scaler_latlng.pkl"
+    len: "data/processed/lade/scaler_len.pkl"
+  max_len: 55
+
+aug:
+  dropout_rate: 0.3
+  noise_std: 10.0
+
+model:
+  input_dim: 7
+  model_dim: 256
+
+loss:
+  lambda_mae: 1.0
+  lambda_nsp: 1.0
+  lambda_cl: 0.5
+  warmup_epochs: 5
+
+train:
+  batch_size: 64
+  lr: 0.0001
+  epochs: 100
+  patience: 10
+  device: "cuda:0"
