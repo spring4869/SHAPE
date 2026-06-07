@@ -17,33 +17,6 @@ class PositionalEncoding(nn.Module):
     def forward(self, x):
         return x + self.pe[:, :x.size(1)].to(x.device)
 
-class CNNBlock(nn.Module):
-    def __init__(self, model_dim):
-        super().__init__()
-        self.conv = nn.Conv1d(model_dim, model_dim, kernel_size=3, padding=1)
-        self.norm = nn.LayerNorm(model_dim)
-        self.act = nn.ReLU()  # 新增激活函数
-
-    def forward(self, x):
-        residual = x
-        x = x.transpose(1, 2)           # (B, D, T)
-        x = self.conv(x)
-        x = self.act(x)                 # relu 激活
-        x = x.transpose(1, 2)           # (B, T, D)
-        return self.norm(x + residual)  # Residual + Norm
-
-
-class CNNBlocks(nn.Module):
-    def __init__(self, model_dim):
-        super().__init__()
-        self.cnn_blocks = nn.Sequential(
-            CNNBlock(model_dim)
-        )
-
-    def forward(self, x):
-        return self.cnn_blocks(x)
-
-
 class TrajTransformer(nn.Module):
     def __init__(self, input_dim=5, model_dim=128, num_heads=4, num_layers=4, dropout=0.1, max_len=1000):
         super().__init__()
@@ -55,7 +28,6 @@ class TrajTransformer(nn.Module):
 
         # Learnable CLS token embedding (shape: [1, model_dim])
         self.cls_token = nn.Parameter(torch.randn(1, model_dim))
-        # self.cnn_blocks = CNNBlocks(model_dim)
 
         # Positional encoding
         self.pos_encoder = PositionalEncoding(model_dim, max_len=max_len)
@@ -77,28 +49,6 @@ class TrajTransformer(nn.Module):
         )
 
         # Next State Prediction (NSP) Head
-        # self.nsp_position_head = nn.Linear(model_dim, 2)      # dlat, dlng
-        # self.nsp_direction_head = nn.Linear(model_dim, 2)     # sin(bearing), cos(bearing)  
-        # self.nsp_dynamics_head = nn.Linear(model_dim, 2)      # bearing_change, curvature
-        # self.nsp_position_head = nn.Sequential(
-        #     nn.Linear(model_dim, model_dim),
-        #     nn.ReLU(),
-        #     nn.Linear(model_dim, 2)  # Δlat, Δlng
-        # )
-
-        # self.nsp_direction_head = nn.Sequential(
-        #     nn.Linear(model_dim, model_dim),
-        #     nn.ReLU(),
-        #     nn.Linear(model_dim, 2)  # sin(bearing), cos(bearing)
-        # )
-
-        # self.nsp_dynamics_head = nn.Sequential(
-        #     nn.Linear(model_dim, model_dim),
-        #     nn.ReLU(),
-        #     nn.Linear(model_dim, 2)  # bearing_change, curvature
-        # )
-
-
         self.nsp_head = nn.Sequential(
             nn.Linear(model_dim, model_dim),
             nn.ReLU(),
@@ -115,11 +65,8 @@ class TrajTransformer(nn.Module):
         """
         B, T, _ = x.size()
 
-        # Input projection
         x = self.input_proj(x)  # (B, T, model_dim)
-        # x = self.cnn_blocks(x)  # CNN Block
 
-        # Replace the first position with learnable CLS token
         cls_tokens = self.cls_token.expand(B, -1, -1)
         x = torch.cat((cls_tokens, x), dim=1) 
 
@@ -135,12 +82,8 @@ class TrajTransformer(nn.Module):
             cls_mask_bit = torch.zeros((B, 1), dtype=torch.bool, device=x.device)
             extend_mask = torch.cat([cls_mask_bit, key_padding_mask], dim=1)
 
-             # === 【新增】检查是否有全遮挡的行 ===
-            # extended_mask: True 表示遮挡
-            # 如果某一行全为 True，说明连 CLS 都被遮了（虽然逻辑上不可能，但检查一下）
             if extend_mask.all(dim=1).any():
-                print("❌ 致命错误：发现某条轨迹被全量 Mask 了！")
-                # 强制把 CLS 设为 False (可见)
+                print("❌")
                 extend_mask[:, 0] = False
         else:
             extend_mask = None
@@ -154,12 +97,6 @@ class TrajTransformer(nn.Module):
 
         elif task == 'nsp':
             out = self.nsp_head(x[:, :-1])  # Predict next state for all except last point
-            # 每个头独立预测
-            # x_input = x[:, :-1]
-            # pos_pred = self.nsp_position_head(x_input)
-            # dir_pred = self.nsp_direction_head(x_input)
-            # dyn_pred = self.nsp_dynamics_head(x_input)
-            # out = torch.cat([pos_pred, dir_pred, dyn_pred], dim=-1)
             return out
 
 
@@ -222,6 +159,7 @@ class TrajTransformer(nn.Module):
                 mask[b, start:end] = True
                 masked += end - start
         return mask.to(device) if device else mask
+        
     def generate_mae_mask(self, batch_size, seq_len, mask_ratio=0.3, device=None):
         """
         Returns:
@@ -292,9 +230,17 @@ class ETARegressor(nn.Module):
         use_driver_emb=True,
     ):
         """
-        encoder: 已训练好的 TrajTransformer（可冻结）
-        time_input_dim: 纯时间特征维度（不含 driver id）
-        use_driver_emb: True 时 x_context 最后一列为 driver id；False 时 x_context 仅含时间特征
+        ETA prediction head used in the fine-tuning stage.
+
+        Args:
+            encoder: Pre-trained TrajTransformer route encoder.
+            num_drivers: Number of driver IDs for the optional embedding table.
+            driver_emb_dim: Dimension of the driver ID embedding.
+            time_input_dim: Dimension of cyclical temporal context features.
+            hidden_dim: Hidden dimension of the regression MLP.
+            num_attn_heads: Number of heads in gated cross-attention fusion.
+            use_driver_emb: If True, x_context is expected to contain driver ID
+                as its last column; otherwise, x_context only contains time features.
         """
         super().__init__()
         self.encoder = encoder

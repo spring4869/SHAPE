@@ -12,11 +12,9 @@ class LHInfoNCELoss(nn.Module):
         embedding_dim,
         dim_lorentz=None,
         beta=1.0,
-        gamma_power=0.5, # 论文推荐 0.5 (即 sqrt)
-        # temperature=0.1,
+        gamma_power=0.5, 
         temperature=0.2,
-        # temperature=0.3,
-        eps=1e-6,        # 稍微调大一点防止除零
+        eps=1e-6,
     ):
         super().__init__()
         self.beta = beta
@@ -41,9 +39,6 @@ class LHInfoNCELoss(nn.Module):
         """
         r = torch.norm(z, dim=-1, keepdim=True).clamp(min=self.eps)
         r_tilde = self.gamma(r)
-        
-        # [数值稳定] 防止 cosh 溢出，双曲函数超过 15 后数值会急剧膨胀，最终导致浮点数溢出
-        # (虽然 gamma 已经压缩了，但防一手总是好的)
         r_tilde = r_tilde.clamp(max=15.0) 
 
         direction = z / r
@@ -56,47 +51,31 @@ class LHInfoNCELoss(nn.Module):
         return torch.cat([x0, x_rest], dim=-1)
 
     def lorentz_similarity(self, z):
-        """
-        计算 Lorentz 相似度并归一化到 [-1, 1]
-        """
         z_l = self.to_lorentz(z) # (2B, D+1)
-        
-        # 1. 计算 Lorentz 内积 <x, y>
-        # (2B, 1, D+1) * (1, 2B, D+1) -> (2B, 2B) 广播计算
+
+        # (2B, 1, D+1) * (1, 2B, D+1) -> (2B, 2B) 
         x = z_l.unsqueeze(1)
         y = z_l.unsqueeze(0)
         
         # <x, y> = -x0*y0 + x_rest*y_rest
         inner = -x[..., 0] * y[..., 0] + torch.sum(x[..., 1:] * y[..., 1:], dim=-1)
         
-        # 2. 转换为距离 (Lorentz Distance squared approx)
-        # 内积一定是负数 (<= -beta)
-        # 距离 d^2 ≈ 2 * (|inner| - beta)
+        # d^2 ≈ 2 * (|inner| - beta)
         dist_sq = 2 * (torch.abs(inner) - self.beta)
         
-        # 3. 转换为相似度
-        # 使用 -dist_sq 是最优雅的方案
-        # sim = -dist_sq
-        sim = 1 - torch.tanh(dist_sq)  # 归一化到 [-1, 1]
+        sim = -dist_sq
         
         return sim
 
     def adaptive_weights(self, z_e, z_h):
-        """
-        基于模长的自适应权重 (无需参数)
-        """
-        # 原始模长越大 -> 说明在那个维度的特征越显著 -> 权重越大
-        
         
         norm_e = torch.norm(z_e, dim=1, keepdim=True)
         norm_h = torch.norm(z_h, dim=1, keepdim=True)
         
-        # 简单的比例分配
         sum_norm = norm_e + norm_h + self.eps
         w_e = norm_e / sum_norm
         w_h = 1.0 - w_e
-        
-        # 广播成矩阵权重
+
         alpha_e = (w_e + w_e.T) / 2.0
         alpha_h = (w_h + w_h.T) / 2.0
             
@@ -109,23 +88,20 @@ class LHInfoNCELoss(nn.Module):
         N = embeddings.shape[0]
         B = N // 2
 
-        # 1. Split
+        # Split
         z_e = embeddings[:, :self.dim_euclid]
         z_h = embeddings[:, self.dim_euclid:]
 
-        # 2. Compute Similarities
-        # 欧氏部分: Cosine [-1, 1]
+        # Compute Similarities
         z_e_norm = F.normalize(z_e, dim=-1)
         sim_e = torch.matmul(z_e_norm, z_e_norm.T)
         
-        # 双曲部分: Normalized Lorentz Sim [-1, 1]
         sim_h = self.lorentz_similarity(z_h)
 
-        # 3. Compute Weights
+        # Compute Weights
         alpha_e, alpha_h = self.adaptive_weights(z_e, z_h)
 
-        # 4. Fusion
-        # 现在 sim_e 和 sim_h 都在 [-1, 1] 范围内，可以直接线性加权
+        # Fusion
         sim = alpha_e * sim_e + alpha_h * sim_h
 
         # 5. InfoNCE
@@ -140,11 +116,9 @@ class LHInfoNCELoss(nn.Module):
 
         loss_nce =  (loss_1 + loss_2) * 0.5
 
-        # ===== variance regularization (防塌缩) =====
         std = torch.sqrt(embeddings.var(dim=0) + 1e-4)
         var_loss = torch.mean(F.relu(1.0 - std))
-
-        # 系数先用 0.01
+        
         loss = loss_nce + 0.01 * var_loss
 
         return loss
