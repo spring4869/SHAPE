@@ -123,11 +123,11 @@ The script automatically evaluates the best fine-tuned model on the test set and
 
 ## Results
 
-The following result is obtained on the LaDe test split using the provided 256-dimensional pre-trained encoder and fine-tuning configuration.
+The following result is obtained on the LaDe test split using the provided 256-dimensional pre-trained encoder and fine-tuning configuration (`seed=14`).
 
 | Dataset | MAE | RMSE | MAPE |
 |---------|-----|------|------|
-| LaDe | 69.9152 | 248.7985 | 7.35% |
+| LaDe | 69.8869 | 248.5073 | 7.29% |
 
 To reproduce the result, prepare the processed LaDe data, edit `configs/finetune_lade.yaml` from the example config, and run:
 

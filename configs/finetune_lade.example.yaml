@@ -3,6 +3,7 @@
 
 experiment_name: "finetune"
 output_dir: "outputs"
+seed: 14
 
 data:
   npz_path: "data/processed/lade/processed_data.npz"
